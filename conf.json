@@ -1,0 +1,22 @@
+{
+  "options": [
+    {
+      "icon": "AA",
+      "color": "#2563eb",
+      "title": "Paste as plain text",
+      "desc": "Strip formatting and paste"
+    },
+    {
+      "icon": "{}",
+      "color": "#7e22ce",
+      "title": "Paste as markdown",
+      "desc": "Format content as Markdown"
+    },
+    {
+      "icon": "{}",
+      "color": "#7e22ce",
+      "title": "Paste as JSON",
+      "desc": "Convert content to JSON"
+    }
+  ]
+}

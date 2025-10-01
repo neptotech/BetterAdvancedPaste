@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Command Palette</title>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+    :root {
+        --bg: #ffffff;
+        --border:#d2d2d2;
+        --radius:12px;
+        --accent:#2563eb;
+        --text:#1e1e1e;
+        --muted:#666;
+        --hover:#f2f5f9;
+        --shortcut-bg:#eef2f7;
+        --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    }
+    * {box-sizing:border-box;}
+    html,body {margin:0;padding:0;font-family:var(--font);background:transparent;color:var(--text);}
+    body {padding:12px;}
+    .palette {width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 24px rgba(0,0,0,.08);display:flex;flex-direction:column;overflow:hidden;font-size:14px;}
+    header {display:flex;align-items:center;padding:10px 14px 8px;gap:10px;border-bottom:1px solid var(--border);}
+    header .icon {width:24px;height:24px;display:grid;place-items:center;background:#111;color:#fff;border-radius:6px;font-size:12px;font-weight:600;font-family:monospace;}
+    header input {flex:1;border:none;outline:none;font-size:14px;padding:6px 4px;background:transparent;}
+    header input::placeholder {color:var(--muted);}
+    ul {list-style:none;margin:0;padding:4px 0 6px;max-height:360px;overflow-y:auto;}
+    li {display:flex;align-items:center;gap:12px;padding:8px 16px;cursor:pointer;transition:background .15s;}
+    li:hover, li.active {background:var(--hover);}    
+    li .item-icon {width:26px;height:26px;border-radius:6px;display:grid;place-items:center;font-size:12px;font-weight:600;font-family:monospace;color:#fff;}
+    li .label {flex:1;display:flex;flex-direction:column;}
+    li .label .title {font-weight:500;}
+    li .label .desc {font-size:12px;color:var(--muted);margin-top:2px;}
+    li .shortcut {display:flex;gap:4px;}
+    .key {background:var(--shortcut-bg);padding:3px 6px;border-radius:6px;font-size:11px;border:1px solid #d9dfe5;min-width:22px;text-align:center;}
+    
+    .divider {height:1px;background:var(--border);margin:4px 0;}
+    .section-title {padding:6px 16px 4px;font-size:11px;letter-spacing:.5px;font-weight:600;color:var(--muted);text-transform:uppercase;}
+    ::-webkit-scrollbar {width:8px;} 
+    ::-webkit-scrollbar-track {background:transparent;} 
+    ::-webkit-scrollbar-thumb {background:#d2dae2;border-radius:4px;} 
+</style>
+</head>
+<body>
+<div class="palette" id="palette">
+    <header>
+        <div class="icon">AI</div>
+        <input id="search" type="text" placeholder="Describe what format you want.." autofocus />
+    </header>
+    <ul id="results" tabindex="0">
+        <!-- Items injected by JS -->
+    </ul>
+</div>
+<script>
+let items = [];
+const listEl = document.getElementById('results');
+const inputEl = document.getElementById('search');
+let activeIndex = 0;
+let filtered = [];
+
+async function load(){
+  if(window.pywebview){
+    try {
+      items = await window.pywebview.api.get_options();
+    } catch(e){ console.error('Failed to load options', e); }
+  } else {
+    // Fallback sample
+    items = [
+      {icon:'AA', color:'#2563eb', title:'Paste as plain text', desc:''},
+      {icon:'{}', color:'#7e22ce', title:'Paste as markdown', desc:''},
+      {icon:'{}', color:'#7e22ce', title:'Paste as JSON', desc:''}
+    ];
+  }
+  filtered = items.slice();
+  render();
+}
+
+function filter(term){
+  term = term.trim().toLowerCase();
+  if(!term){
+    filtered = items.slice();
+  } else {
+    filtered = items.filter(o=>(
+      o.title && o.title.toLowerCase().includes(term)
+    ) || (o.desc && o.desc.toLowerCase().includes(term)));
+  }
+  activeIndex = 0;
+  render();
+}
+
+function render(){
+  listEl.innerHTML = '';
+  filtered.forEach((it,i)=>{
+    const li=document.createElement('li');
+    li.dataset.index=i;
+    if(i===activeIndex) li.classList.add('active');
+    const icon=document.createElement('div');
+    icon.className='item-icon';
+    icon.style.background=it.color || '#111827';
+    icon.textContent=it.icon || '#';
+    li.appendChild(icon);
+    const label=document.createElement('div');
+    label.className='label';
+    label.innerHTML = `<span class="title">${it.title}</span>`+ (it.desc?`<span class="desc">${it.desc}</span>`:'');
+    li.appendChild(label);
+    li.addEventListener('click',()=>trigger(it.title));
+    listEl.appendChild(li);
+  });
+}
+
+function trigger(name){
+  if(window.pywebview) {
+    window.pywebview.api.action(name).then(r=>console.log(r));
+  } else {
+    console.log('Trigger', name);
+  }
+}
+
+function submitText(text){
+  if(window.pywebview){
+    window.pywebview.api.submit_text(text).then(r=>console.log(r));
+  } else {
+    console.log('Submit text', text);
+  }
+}
+
+function move(delta){
+  if(!filtered.length) return;
+  activeIndex = (activeIndex + delta + filtered.length) % filtered.length;
+  render();
+  const active = listEl.querySelector('li.active');
+  if(active) active.scrollIntoView({block:'nearest'});
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowDown'){e.preventDefault();move(1);} 
+  else if(e.key==='ArrowUp'){e.preventDefault();move(-1);} 
+  else if(e.key==='Enter'){
+    e.preventDefault();
+    const text = inputEl.value.trim();
+    if(text){
+      submitText(text);
+      inputEl.value='';
+      filter('');
+    } else if(filtered[activeIndex]) {
+      trigger(filtered[activeIndex].title);
+    }
+  }
+});
+
+inputEl.addEventListener('input',()=>filter(inputEl.value));
+
+load();
+</script>
+</body>
+</html>
