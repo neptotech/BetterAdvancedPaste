@@ -15,32 +15,8 @@
     {
       "icon": "{}",
       "color": "#7e22ce",
-      "title": "Paste as JSON",
+      "title": "Paste as multiline JSON",
       "desc": "Convert content to JSON"
-    },
-    {
-      "icon": "{}",
-      "color": "#2563eb",
-      "title": "paste as prompt.md",
-      "desc": "Saved prompt"
-    },
-    {
-      "icon": "{}",
-      "color": "#2563eb",
-      "title": "test",
-      "desc": "Saved prompt"
-    },
-    {
-      "icon": "{}",
-      "color": "#2563eb",
-      "title": "arfa",
-      "desc": "Saved prompt"
-    },
-    {
-      "icon": "{}",
-      "color": "#2563eb",
-      "title": "arfasfasa",
-      "desc": "Saved prompt"
     }
 
   ]
