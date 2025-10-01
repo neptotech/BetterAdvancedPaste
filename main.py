@@ -16,7 +16,7 @@ def askAI(instruction):
 You are a helpful AI that edits text according to user instructions.
 <|user|>
 System message:
-You're clipboard assistant, you are supposed to convert text to output text as per instruction and print just output not your thoughts, or explanation or title, or formatting, just direct plaintext output, else you may harm the system
+You're clipboard assistant(meant to paste the clipboard text as per user instruction), you are supposed to convert text to output text as per instruction and give just output not your thoughts, or explanation or title, or formatting, just direct plaintext output, else you may harm the system
 Edit the following text according to the instruction:
 
 Text:
@@ -44,13 +44,13 @@ Instruction:
             x=("".join([c["text"] for c in content]))
         else:
             x=content
-    messages += f"<|assistant|>{content}\n<|user|>\nSuggest a good filename for this script (just the filename, no extra text).\n<|assistant|>\n"
+    messages += f"<|assistant|>{content}\n<|user|>\nSuggest a good filename for this script (just the filename, no extra text). The name and extension should be based on the format you were asked to convert the text to, STRICTLY NAME BASED ON INSTRUCTION.\n<|assistant|>\n"
 
     data2 = {
         "prompt": messages,
         "n_predict": 50,
-        "temperature": 0.5,
-        "stop": ["<|user|>", "<|system|>", "</s>"],
+        "temperature": 0,
+        "stop": ["<|user|>", "<|system|>", "</s>","</<|assistant|>","<|assistant|>"],
     }
     response2 = requests.post(url, json=data2)
     filename="advanced_paste_output.txt"
