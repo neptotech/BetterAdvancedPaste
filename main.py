@@ -4,6 +4,8 @@ import webview
 from pathlib import Path
 import requests
 import pyperclip
+import sys
+import argparse
 
 url = "http://127.0.0.1:8080/completion"
 
@@ -26,12 +28,12 @@ Instruction:
 """
     data = {
     "prompt": messages,
-    "n_predict": max(512, len(clipboard_text)*1/5*2),
+    "n_predict": -1,
     "temperature": 0,
     "top_k": 40,
     "top_p": 0.95,
     "repeat_penalty": 1.1,
-    "stop": ["<|user|>", "<|system|>", "</s>"],  # prevent infinite rambling
+    "stop": ["<|user|>", "<|system|>", "</s>","</<|assistant|>","<|assistant|>"],  # prevent infinite rambling
     }
     response = requests.post(url, json=data)
     x=clipboard_text
@@ -66,8 +68,9 @@ Edit API methods to integrate real functionality.
 
 # Simple API placeholder that UI can call
 class API:
-    def __init__(self, config_path: Path):
+    def __init__(self, config_path: Path, output_dir: Path):
         self.config_path = config_path
+        self.output_dir = output_dir
         self._cache: List[Dict[str, Any]] | None = None
 
     # Internal loader
@@ -109,20 +112,46 @@ class API:
 
     def action(self, name: str):
         print(f"Action triggered: {name}")
-        return {"status": "ok", "action": name}
+        try:
+            content, filename_raw = askAI(name)
+            filename = self._sanitize_filename(filename_raw)
+            path = self.output_dir / filename
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding='utf-8')
+            return {"status": "ok", "file": str(path), "filename": filename}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
 
     def submit_text(self, text: str):
         print(f"User submitted text: {text}")
-        return {"status": "ok", "text": text}
+        try:
+            content, filename_raw = askAI(text)
+            filename = self._sanitize_filename(filename_raw)
+            path = self.output_dir / filename
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding='utf-8')
+            return {"status": "ok", "file": str(path), "filename": filename}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+    def _sanitize_filename(self, name: str) -> str:
+        name = (name or '').strip().replace('\r','').replace('\n','')
+        for ch in '<>:"/\\|?*':
+            name = name.replace(ch, '_')
+        if not name:
+            name = 'advanced_paste_output'
+        if '.' not in name:
+            name += '.txt'
+        return name
 
 
-def create_window():
+def create_window(output_dir: Path):
     html_path = Path(__file__).parent / 'ui.html'
     if not html_path.exists():
         raise FileNotFoundError('ui.html not found')
 
     config_path = Path(__file__).parent / 'conf.json'
-    api = API(config_path)
+    api = API(config_path, output_dir)
     _ = api  # reference to avoid linter warning
     preferred_backends = ['edgechromium', 'cef', 'mshtml']
     for backend in preferred_backends:
@@ -155,5 +184,13 @@ def create_window():
     webview.start(debug=False, http_server=True)
 
 
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description='Advanced Paste AI')
+    parser.add_argument('output_dir', help='Directory to save AI output file')
+    return parser.parse_args(argv)
+
 if __name__ == '__main__':
-    create_window()
+    args = parse_args(sys.argv[1:])
+    out_dir = Path(args.output_dir).expanduser().resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    create_window(out_dir)
