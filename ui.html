@@ -25,7 +25,11 @@
     header .icon {width:24px;height:24px;display:grid;place-items:center;background:#111;color:#fff;border-radius:6px;font-size:12px;font-weight:600;font-family:monospace;}
     header input {flex:1;border:none;outline:none;font-size:14px;padding:6px 4px;background:transparent;}
     header input::placeholder {color:var(--muted);}
-    ul {list-style:none;margin:0;padding:4px 0 6px;max-height:360px;overflow-y:auto;}
+  /* Make the results list flex and scroll naturally within the window */
+  ul {list-style:none;margin:0;padding:4px 0 6px;overflow-y:auto;flex:1 1 auto;min-height:0;}
+  /* Ensure palette uses available height so list can scroll */
+  html, body, .palette {height:100%;}
+  .palette {display:flex;flex-direction:column;}
     li {display:flex;align-items:center;gap:12px;padding:8px 16px;cursor:pointer;transition:background .15s;}
     li:hover, li.active {background:var(--hover);}    
     li .item-icon {width:26px;height:26px;border-radius:6px;display:grid;place-items:center;font-size:12px;font-weight:600;font-family:monospace;color:#fff;}
@@ -66,20 +70,30 @@ let filtered = [];
 let busy = false;
 
 async function load(){
-  if(window.pywebview){
+  // If pywebview is available, always try to load real options
+  if(window.pywebview && window.pywebview.api){
     try {
-      items = await window.pywebview.api.get_options();
-    } catch(e){ console.error('Failed to load options', e); }
-  } else {
-    // Fallback sample
+      const opts = await window.pywebview.api.get_options();
+      if(Array.isArray(opts)){
+        items = opts; // replace any fallback
+        filtered = items.slice();
+        render();
+        return;
+      }
+    } catch(e){
+      console.error('Failed to load options from backend', e);
+    }
+  }
+  // Only apply fallback if we still have nothing
+  if(!items.length){
     items = [
       {icon:'{}', color:'#2563eb', title:'Paste as plain text', desc:''},
       {icon:'{}', color:'#7e22ce', title:'Paste as markdown', desc:''},
       {icon:'{}', color:'#7e22ce', title:'Paste as JSON', desc:''}
     ];
+    filtered = items.slice();
+    render();
   }
-  filtered = items.slice();
-  render();
 }
 
 function filter(term){
@@ -200,7 +214,25 @@ document.addEventListener('keydown',e=>{
 
 inputEl.addEventListener('input',()=>filter(inputEl.value));
 
+// Strategy:
+// 1. Try an initial load (may use fallback if bridge not ready yet)
+// 2. Listen for pywebviewready to refresh with real config once available
+// 3. Add a short retry sequence for browsers/backends that delay the event
+
+function scheduleRetries(){
+  [50, 150, 400].forEach(ms=> setTimeout(()=>{
+    if(window.pywebview && window.pywebview.api){
+      load();
+    }
+  }, ms));
+}
+
+window.addEventListener('pywebviewready', ()=>{
+  load();
+});
+
 load();
+scheduleRetries();
 </script>
 </body>
 </html>
