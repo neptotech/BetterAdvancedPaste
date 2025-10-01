@@ -1,4 +1,7 @@
 {
+  "settings": {
+    "save_history": false
+  },
   "options": [
     {
       "icon": "{}",
@@ -17,7 +20,36 @@
       "color": "#7e22ce",
       "title": "Paste as multiline JSON",
       "desc": "Convert content to JSON"
+    },
+    {
+      "icon": "{}",
+      "color": "#7e22ce",
+      "title": "Paste as Powershell script",
+      "desc": "Convert content to Powershell script"
+    },
+    {
+      "icon": "{}",
+      "color": "#7e22ce",
+      "title": "Paste as Python script",
+      "desc": "Convert content to Python script"
+    },
+    {
+      "icon": "{}",
+      "color": "#7e22ce",
+      "title": "Paste as Bash script",
+      "desc": "Convert content to Bash script"
+    },
+    {
+      "icon": "{}",
+      "color": "#7e22ce",
+      "title": "Paste as HTML",
+      "desc": "Convert content to HTML"
+    },
+    {
+      "icon": "{}",
+      "color": "#7e22ce",
+      "title": "Paste as XML",
+      "desc": "Convert content to XML"
     }
-
   ]
 }

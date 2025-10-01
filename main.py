@@ -72,6 +72,7 @@ class API:
         self.config_path = config_path
         self.output_dir = output_dir
         self._cache: List[Dict[str, Any]] | None = None
+        self._settings: Dict[str, Any] | None = None
         self._window = None  # will be set after window creation
 
     # Internal loader
@@ -81,9 +82,17 @@ class API:
         if not self.config_path.exists():
             print(f"Config file '{self.config_path}' not found. Using empty options list.")
             self._cache = []
+            self._settings = {"save_history": True}
             return self._cache
         try:
             data = json.loads(self.config_path.read_text(encoding='utf-8'))
+            # settings
+            settings = data.get('settings') or {}
+            if not isinstance(settings, dict):
+                settings = {}
+            self._settings = {
+                'save_history': bool(settings.get('save_history', True))
+            }
             options = data.get('options', [])
             if not isinstance(options, list):
                 raise ValueError("'options' must be a list")
@@ -105,11 +114,47 @@ class API:
         except Exception as e:
             print(f"Failed to load config: {e}")
             self._cache = []
+            if self._settings is None:
+                self._settings = {"save_history": True}
         return self._cache
 
     # API method exposed to JS
     def get_options(self):
         return self._load()
+
+    def get_settings(self):
+        # Ensure loaded
+        if self._settings is None:
+            self._load()
+        return self._settings or {"save_history": True}
+
+    def set_save_history(self, value: bool):
+        # Update in-memory settings and persist
+        if self._settings is None:
+            self._load()
+        if self._settings is None:
+            self._settings = {}
+        self._settings['save_history'] = bool(value)
+        # Persist to file without disturbing existing options
+        try:
+            if self.config_path.exists():
+                try:
+                    data = json.loads(self.config_path.read_text(encoding='utf-8'))
+                except Exception:
+                    data = {}
+            else:
+                data = {}
+            data['settings'] = data.get('settings') or {}
+            if not isinstance(data['settings'], dict):
+                data['settings'] = {}
+            data['settings']['save_history'] = self._settings['save_history']
+            # Preserve options
+            if 'options' not in data:
+                data['options'] = []
+            self.config_path.write_text(json.dumps(data, indent=2) + "\n", encoding='utf-8')
+        except Exception as e:
+            print(f"Failed to persist settings: {e}")
+        return self._settings
 
     def action(self, name: str):
         print(f"Action triggered: {name}")
@@ -119,7 +164,8 @@ class API:
             path = self.output_dir / filename
             self.output_dir.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding='utf-8')
-            self.save_prompt(name)
+            if self.get_settings().get('save_history', True):
+                self.save_prompt(name)
             return {"status": "ok", "file": str(path), "filename": filename}
         except Exception as e:
             return {"status": "error", "error": str(e)}
@@ -132,7 +178,8 @@ class API:
             path = self.output_dir / filename
             self.output_dir.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding='utf-8')
-            self.save_prompt(text)
+            if self.get_settings().get('save_history', True):
+                self.save_prompt(text)
             return {"status": "ok", "file": str(path), "filename": filename}
         except Exception as e:
             return {"status": "error", "error": str(e)}

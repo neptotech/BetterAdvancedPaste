@@ -49,6 +49,11 @@
   body.busy li {opacity:0.45; cursor:not-allowed;}
   body.busy li:hover {background:inherit;}
   body.busy header input {opacity:0.6;}
+  /* Toggle styles */
+  #saveHistoryToggle {position:relative;display:inline-block;vertical-align:middle;background:var(--shortcut-bg);transition:background .25s,width .2s;}
+  #saveHistoryToggle:after {content:"";position:absolute;left:2px;top:50%;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s cubic-bezier(.4,.0,.2,1);transform:translate(0,-50%);} 
+  #saveHistoryToggle:checked {background:var(--accent);}
+  #saveHistoryToggle:checked:after {transform:translate(16px,-50%);} 
 </style>
 </head>
 <body>
@@ -57,9 +62,15 @@
         <div class="icon">AI</div>
         <input id="search" type="text" placeholder="Describe what format you want.." autofocus />
     </header>
-    <ul id="results" tabindex="0">
-        <!-- Items injected by JS -->
-    </ul>
+  <ul id="results" tabindex="0">
+    <!-- Items injected by JS -->
+  </ul>
+  <div id="footer" style="border-top:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;font-size:12px;">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;justify-content:space-between;">
+      <span style="color:var(--muted);font-weight:500;">Save history</span>
+  <input id="saveHistoryToggle" type="checkbox" style="width:34px;height:18px;appearance:none;border:1px solid #c8d0d7;border-radius:20px;position:relative;cursor:pointer;outline:none;transition:background .25s;">
+    </label>
+  </div>
 </div>
 <script>
 let items = [];
@@ -68,6 +79,7 @@ const inputEl = document.getElementById('search');
 let activeIndex = 0;
 let filtered = [];
 let busy = false;
+let settings = { save_history: true };
 
 async function load(){
   // If pywebview is available, always try to load real options
@@ -78,6 +90,8 @@ async function load(){
         items = opts; // replace any fallback
         filtered = items.slice();
         render();
+        // Load settings after options
+        loadSettings();
         return;
       }
     } catch(e){
@@ -93,6 +107,31 @@ async function load(){
     ];
     filtered = items.slice();
     render();
+  }
+}
+
+async function loadSettings(){
+  if(!(window.pywebview && window.pywebview.api && window.pywebview.api.get_settings)) return;
+  try {
+    const s = await window.pywebview.api.get_settings();
+    if(s && typeof s === 'object'){
+      settings.save_history = !!s.save_history;
+      applyToggleState();
+    }
+  } catch(e){ console.warn('Failed to load settings', e); }
+}
+
+function applyToggleState(){
+  const chk = document.getElementById('saveHistoryToggle');
+  if(chk){ chk.checked = !!settings.save_history; }
+}
+
+async function toggleSaveHistory(){
+  const chk = document.getElementById('saveHistoryToggle');
+  if(!chk) return;
+  settings.save_history = chk.checked;
+  if(window.pywebview && window.pywebview.api && window.pywebview.api.set_save_history){
+    try { await window.pywebview.api.set_save_history(chk.checked); } catch(e){ console.warn('Failed to persist save_history', e); }
   }
 }
 
@@ -212,6 +251,12 @@ document.addEventListener('keydown',e=>{
   }
 });
 
+document.addEventListener('click', e=>{
+  if(e.target && e.target.id === 'saveHistoryToggle'){
+    toggleSaveHistory();
+  }
+});
+
 inputEl.addEventListener('input',()=>filter(inputEl.value));
 
 // Strategy:
@@ -233,6 +278,8 @@ window.addEventListener('pywebviewready', ()=>{
 
 load();
 scheduleRetries();
+// Extra attempt to fetch settings if they arrive after initial load
+setTimeout(loadSettings, 250);
 </script>
 </body>
 </html>
