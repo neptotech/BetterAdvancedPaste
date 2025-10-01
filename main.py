@@ -119,6 +119,7 @@ class API:
             path = self.output_dir / filename
             self.output_dir.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding='utf-8')
+            self.save_prompt(name)
             return {"status": "ok", "file": str(path), "filename": filename}
         except Exception as e:
             return {"status": "error", "error": str(e)}
@@ -131,6 +132,7 @@ class API:
             path = self.output_dir / filename
             self.output_dir.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding='utf-8')
+            self.save_prompt(text)
             return {"status": "ok", "file": str(path), "filename": filename}
         except Exception as e:
             return {"status": "error", "error": str(e)}
@@ -155,6 +157,42 @@ class API:
         if '.' not in name:
             name += '.txt'
         return name
+
+    def save_prompt(self, prompt: str):
+        prompt = (prompt or '').strip()
+        if not prompt:
+            return
+        try:
+            if self.config_path.exists():
+                try:
+                    data = json.loads(self.config_path.read_text(encoding='utf-8'))
+                except Exception:
+                    data = {}
+            else:
+                data = {}
+            options = data.get('options')
+            if not isinstance(options, list):
+                options = []
+            # Avoid duplicate titles (case-insensitive)
+            lower_titles = { (o.get('title') or '').strip().lower(): i for i,o in enumerate(options) if isinstance(o, dict) }
+            key = prompt.lower()
+            if key in lower_titles:
+                # Move existing to front (recency) maybe? For now leave as-is.
+                pass
+            else:
+                # Append new minimal entry; you can enrich later manually.
+                options.append({
+                    "icon": "{}",
+                    "color": "#2563eb",
+                    "title": prompt,
+                    "desc": "Saved prompt"
+                })
+            data['options'] = options
+            self.config_path.write_text(json.dumps(data, indent=2) + "\n", encoding='utf-8')
+            # Invalidate cache so UI can show newly added prompt if reopened
+            self._cache = None
+        except Exception as e:
+            print(f"Failed to save prompt: {e}")
 
 
 def create_window(output_dir: Path):

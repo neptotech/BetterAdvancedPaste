@@ -40,6 +40,11 @@
     ::-webkit-scrollbar {width:8px;} 
     ::-webkit-scrollbar-track {background:transparent;} 
     ::-webkit-scrollbar-thumb {background:#d2dae2;border-radius:4px;} 
+  /* Busy/disabled visual state */
+  li.disabled {opacity:0.45; cursor:not-allowed;}
+  body.busy li {opacity:0.45; cursor:not-allowed;}
+  body.busy li:hover {background:inherit;}
+  body.busy header input {opacity:0.6;}
 </style>
 </head>
 <body>
@@ -68,7 +73,7 @@ async function load(){
   } else {
     // Fallback sample
     items = [
-      {icon:'AA', color:'#2563eb', title:'Paste as plain text', desc:''},
+      {icon:'{}', color:'#2563eb', title:'Paste as plain text', desc:''},
       {icon:'{}', color:'#7e22ce', title:'Paste as markdown', desc:''},
       {icon:'{}', color:'#7e22ce', title:'Paste as JSON', desc:''}
     ];

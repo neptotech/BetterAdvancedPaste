@@ -1,7 +1,7 @@
 {
   "options": [
     {
-      "icon": "AA",
+      "icon": "{}",
       "color": "#2563eb",
       "title": "Paste as plain text",
       "desc": "Strip formatting and paste"
@@ -17,6 +17,12 @@
       "color": "#7e22ce",
       "title": "Paste as JSON",
       "desc": "Convert content to JSON"
+    },
+    {
+      "icon": "{}",
+      "color": "#2563eb",
+      "title": "paste as prompt.md",
+      "desc": "Saved prompt"
     }
   ]
 }
