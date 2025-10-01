@@ -2,6 +2,63 @@ import json
 from typing import List, Dict, Any
 import webview
 from pathlib import Path
+import requests
+import pyperclip
+
+url = "http://127.0.0.1:8080/completion"
+
+clipboard_text = pyperclip.paste()
+
+def askAI(instruction):
+    messages = f"""<|system|>
+You are a helpful AI that edits text according to user instructions.
+<|user|>
+System message:
+You're clipboard assistant, you are supposed to convert text to output text as per instruction and print just output not your thoughts, or explanation or title, or formatting, just direct plaintext output, else you may harm the system
+Edit the following text according to the instruction:
+
+Text:
+{clipboard_text}
+
+Instruction:
+{instruction}
+<|assistant|>
+"""
+    data = {
+    "prompt": messages,
+    "n_predict": max(512, len(clipboard_text)*1/5*2),
+    "temperature": 0,
+    "top_k": 40,
+    "top_p": 0.95,
+    "repeat_penalty": 1.1,
+    "stop": ["<|user|>", "<|system|>", "</s>"],  # prevent infinite rambling
+    }
+    response = requests.post(url, json=data)
+    x=clipboard_text
+    if response.status_code == 200:
+        # llama.cpp returns a list of chunks; join them if needed
+        content = response.json()["content"]
+        if isinstance(content, list):
+            x=("".join([c["text"] for c in content]))
+        else:
+            x=content
+    messages += f"<|assistant|>{content}\n<|user|>\nSuggest a good filename for this script (just the filename, no extra text).\n<|assistant|>\n"
+
+    data2 = {
+        "prompt": messages,
+        "n_predict": 50,
+        "temperature": 0.5,
+        "stop": ["<|user|>", "<|system|>", "</s>"],
+    }
+    response2 = requests.post(url, json=data2)
+    filename="advanced_paste_output.txt"
+    if response2.status_code == 200:
+        content = response2.json()["content"]
+        if isinstance(content, list):
+            filename = "".join([c["text"] for c in content])
+        else:
+            filename = content
+    return x, filename
 
 """Minimal pywebview launcher for the command palette UI.
 Edit API methods to integrate real functionality.

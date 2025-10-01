@@ -1,14 +1,17 @@
-# PyWebView Command Palette UI
+# AI Clipboard Transformer Palette
 
-A minimal replica of the Windows clipboard / AI assist style command palette using **pywebview**. Functionality hooks are placeholders; focus is on UI structure so you can wire your own logic.
+A minimal **pywebview** command palette that captures your clipboard, lets you type an instruction (or pick a preset), sends both to a local AI endpoint (llama.cpp style), then saves the transformed text to a file with an AI‑suggested filename in a target folder you provide on startup.
 
 ## Features
-- PyWebView desktop window (Edge / Chromium backend if available)
-- Search bar header with accent icon
-- Scrollable action list, keyboard navigation (↑ ↓ Enter)
-- Dynamic options loaded from `conf.json` (no code changes needed to add items)
-- Simple Python API: `get_options`, `action`, `submit_text`
-- Press Enter with text in the search box to send that text to Python (`submit_text`)
+- Clipboard captured at launch (plain text) using `pyperclip`
+- Type an instruction OR pick a predefined option (its title becomes the instruction)
+- Sends clipboard + instruction to local AI endpoint (`http://127.0.0.1:8080/completion`)
+- Second AI call suggests a good filename (sanitized + `.txt` added if missing)
+- Saves result into the output directory you pass as the first CLI argument
+- PyWebView desktop window (Edge / Chromium backend preferred)
+- Keyboard navigation (↑ ↓ Enter)
+- Options loaded from `conf.json`
+- API methods: `get_options`, `action`, `submit_text` (both run the AI pipeline)
 
 ## Keyboard & Interaction
 | Key / Action | Behavior |
@@ -34,9 +37,20 @@ Create a virtual environment (recommended) then install dependencies.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python main.py
+python main.py D:\\Files\\   # <- choose your output directory
 ```
-If Edge backend fails you can remove `gui='edgechromium'` logic in `main.py` to fall back to default.
+If Edge backend fails the app will attempt other backends then fallback to auto.
+
+The first argument is required: it is where generated files will be saved. It will be created if it does not exist.
+
+### Local AI Endpoint
+This project expects a llama.cpp compatible HTTP server at `http://127.0.0.1:8080/completion` returning JSON chunks like:
+```json
+{
+	"content": [ {"text": "..."}, {"text": "..."} ]
+}
+```
+Adjust `AI_URL` in `main.py` if your endpoint differs.
 
 ## Configuration: `conf.json`
 Options are defined externally so you can add new commands without editing code.
@@ -59,12 +73,15 @@ Fields:
 On load, the frontend calls `get_options()`; invalid or missing fields are skipped. If `conf.json` is absent, an empty list (fallback sample in dev) is used.
 
 ## Extending Behavior
-- Handle option selection: update `API.action` in `main.py` to perform real logic based on `name`.
-- Handle free-form text: modify `API.submit_text` to route the user-entered text to an AI model / backend.
-- Add more API methods: define them on the `API` class; in JS call `window.pywebview.api.methodName(args...)`.
-- Make window frameless: set `frameless=True` in `create_window()` and add custom window controls.
+- Change model params (temperature, n_predict) inside `call_local_ai` or when invoking it.
+- Use a different save format (e.g., add extension inference) in `_process_instruction` of the `API` class.
+- Add metadata sidecar (e.g., JSON with prompt + timestamp) after writing the main file.
+- Make window frameless: set `frameless=True` in `create_window()` and add custom controls.
+- Add streaming: adapt `call_local_ai` to handle server-sent events or partial chunks.
 
 ## Notes
-- Image-related demo actions have been removed; only text-focused paste options remain.
-- No persistence or system clipboard integration included—add via additional Python libraries if needed.
-- For production, consider validation, logging, and error UI for API failures.
+- Filename is sanitized (invalid Windows characters replaced with `_`). `.txt` enforced if missing.
+- If AI filename generation fails, a timestamped fallback is used (e.g., `output_YYYYmmdd_HHMMSS.txt`).
+- Errors from the AI call are surfaced back to the JS console (see DevTools) via returned status.
+- Clipboard is read only once at startup; re-run app if you want to process a changed clipboard (or extend to recapture on each instruction).
+- Minimal error UI—extend JS to show toast/snackbar for better UX.
