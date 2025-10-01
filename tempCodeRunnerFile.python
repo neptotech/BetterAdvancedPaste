@@ -1,0 +1,31 @@
+import os
+import json
+import requests
+
+API_KEY = "sk-LNIdTKBwJG6LNVqwn7ZiOe7qzYtGcUgQ3lbH3fcfx69V4gFl"
+ENDPOINT = "https://api.chatanywhere.tech/v1/chat/completions"
+MODEL = "gpt-3.5-turbo"
+
+def main():
+    messages = [
+        {"role": "system", "content": "You are an AI."},
+        {"role": "user", "content": "hi"},
+    ]
+    payload = {
+        "model": MODEL,
+        "messages": messages,
+        "temperature": 0,
+        "max_tokens": 32
+    }
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    resp = requests.post(ENDPOINT, headers=headers, json=payload, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    print(data["choices"][0]["message"]["content"])
+
+if __name__ == "__main__":
+    main()

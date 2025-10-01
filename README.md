@@ -53,11 +53,18 @@ This project expects a llama.cpp compatible HTTP server at `http://127.0.0.1:808
 Adjust `AI_URL` in `main.py` if your endpoint differs.
 
 ## Configuration: `conf.json`
-Options are defined externally so you can add new commands without editing code.
+Options are defined externally so you can add new commands without editing code. A new `ai` section controls whether an OpenAI‑compatible endpoint is used or a local llama.cpp style server.
 
-Example:
+Example (abridged):
 ```json
 {
+	"ai": {
+		"use_openai": true,
+		"api_key": "YOUR_API_KEY_HERE",
+		"model": "gpt-3.5-turbo",
+		"endpoint": "https://api.chatanywhere.tech/v1/chat/completions",
+		"local_url": "http://127.0.0.1:8080/completion"
+	},
 	"options": [
 		{ "icon": "AA", "color": "#2563eb", "title": "Paste as plain text", "desc": "Strip formatting and paste" },
 		{ "icon": "{}", "color": "#7e22ce", "title": "Paste as markdown", "desc": "Format content as Markdown" }
@@ -71,6 +78,28 @@ Fields:
 - `desc` (string) secondary description / hint
 
 On load, the frontend calls `get_options()`; invalid or missing fields are skipped. If `conf.json` is absent, an empty list (fallback sample in dev) is used.
+
+### AI Section Fields
+| Field | Type | Description |
+|-------|------|-------------|
+| `use_openai` | bool | If true, uses an OpenAI chat completion style request. If false (or missing / no key), falls back to local URL. |
+| `api_key` | string | API key for remote endpoint. If blank and `use_openai=true`, a warning is printed and local fallback is attempted. |
+| `model` | string | Model name passed to the OpenAI‑compatible API. |
+| `endpoint` | string | Chat completion endpoint (POST). |
+| `local_url` | string | Local llama.cpp style endpoint used when not using OpenAI or when key missing. |
+
+### Environment Variable Overrides
+You can override values without editing the file:
+
+| Env Var | Overrides |
+|---------|----------|
+| `ADV_PASTE_API_KEY` / `OPENAI_API_KEY` | ai.api_key |
+| `ADV_PASTE_MODEL` | ai.model |
+| `ADV_PASTE_ENDPOINT` | ai.endpoint |
+| `ADV_PASTE_LOCAL_URL` | ai.local_url |
+| `ADV_PASTE_USE_OPENAI` | ai.use_openai (values: 1/0, true/false, yes/no) |
+
+If `use_openai` is true but no key is provided (file and env both empty) the app prints a warning and automatically uses the local endpoint instead.
 
 ## Extending Behavior
 - Change model params (temperature, n_predict) inside `call_local_ai` or when invoking it.

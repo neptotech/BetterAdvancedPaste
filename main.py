@@ -6,15 +6,64 @@ import requests
 import pyperclip
 import sys
 import argparse
+import os
 
-url = "http://127.0.0.1:8080/completion"
+# Defaults (will be overridden by conf.json ai section if present)
+AI_DEFAULTS = {
+    "use_openai": False,
+    "local_url": "http://127.0.0.1:8080/completion"
+}
+
+CONFIG_PATH = Path(__file__).parent / 'conf.json'
+
+def load_ai_settings() -> Dict[str, Any]:
+    data: Dict[str, Any] = {}
+    if CONFIG_PATH.exists():
+        try:
+            data = json.loads(CONFIG_PATH.read_text(encoding='utf-8'))
+        except Exception as e:
+            print(f"Failed to parse conf.json: {e}")
+    ai = data.get('ai') if isinstance(data, dict) else {}
+    if not isinstance(ai, dict):
+        ai = {}
+    merged = {**AI_DEFAULTS, **{k: v for k, v in ai.items() if v is not None}}
+    # Environment variable overrides
+    # (common names: ADV_PASTE_API_KEY, OPENAI_API_KEY, ADV_PASTE_MODEL, ADV_PASTE_ENDPOINT)
+    api_key_env = os.getenv('ADV_PASTE_API_KEY') or os.getenv('OPENAI_API_KEY')
+    if api_key_env:
+        merged['api_key'] = api_key_env
+    model_env = os.getenv('ADV_PASTE_MODEL')
+    if model_env:
+        merged['model'] = model_env
+    endpoint_env = os.getenv('ADV_PASTE_ENDPOINT')
+    if endpoint_env:
+        merged['endpoint'] = endpoint_env
+    local_url_env = os.getenv('ADV_PASTE_LOCAL_URL')
+    if local_url_env:
+        merged['local_url'] = local_url_env
+    use_openai_env = os.getenv('ADV_PASTE_USE_OPENAI')
+    if use_openai_env is not None:
+        if use_openai_env.lower() in ('0','false','no','off'):
+            merged['use_openai'] = False
+        elif use_openai_env.lower() in ('1','true','yes','on'):
+            merged['use_openai'] = True
+    return merged
+
+AI_SETTINGS = load_ai_settings()
+USE_OPENAI: bool = bool(AI_SETTINGS.get('use_openai'))
+OPENAI_API_KEY: str = AI_SETTINGS.get('api_key')
+OPENAI_MODEL: str = AI_SETTINGS.get('model')
+OPENAI_ENDPOINT: str = AI_SETTINGS.get('endpoint')
+LOCAL_URL: str = AI_SETTINGS.get('local_url')
+
+if USE_OPENAI and not OPENAI_API_KEY:
+    print("Warning: use_openai is True but no API key supplied. Set ADV_PASTE_API_KEY env var or conf.json ai.api_key.")
 
 clipboard_text = pyperclip.paste()
 
 def askAI(instruction):
-    messages = f"""<|system|>
-You are a helpful AI that edits text according to user instructions.
-<|user|>
+    p1="You are a helpful AI that edits text according to user instructions."
+    p2=f"""
 System message:
 You're clipboard assistant(meant to paste the clipboard text as per user instruction), you are supposed to convert text to output text as per instruction and give just output not your thoughts, or explanation or title, or formatting, just direct plaintext output, else you may harm the system
 Edit the following text according to the instruction:
@@ -24,42 +73,98 @@ Text:
 
 Instruction:
 {instruction}
+"""
+    
+    # If OpenAI selected but no key, silently fallback to local if available
+    effective_use_openai = USE_OPENAI and bool(OPENAI_API_KEY)
+    if USE_OPENAI and not OPENAI_API_KEY:
+        print("No API key present; falling back to local model endpoint.")
+        effective_use_openai = False
+
+    if effective_use_openai:
+        messages = [
+        {"role": "system", "content": p1},
+        {"role": "user", "content": p2},
+    ]
+        data = {
+            "model": OPENAI_MODEL,
+            "messages": messages ,
+            "temperature": 0,
+            "max_tokens": 2048,
+            "stop": ["<|user|>", "<|system|>", "</s>","<|assistant|>"]
+        }
+        request_url = OPENAI_ENDPOINT
+        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}" if OPENAI_API_KEY else "",
+        "Content-Type": "application/json",}
+    else:
+        messages = f"""<|system|>
+{p1}
+<|user|>
+{p2}
 <|assistant|>
 """
-    data = {
-    "prompt": messages,
-    "n_predict": -1,
-    "temperature": 0,
-    "top_k": 40,
-    "top_p": 0.95,
-    "repeat_penalty": 1.1,
-    "stop": ["<|user|>", "<|system|>", "</s>","</<|assistant|>","<|assistant|>"],  # prevent infinite rambling
-    }
-    response = requests.post(url, json=data)
-    x=clipboard_text
+        data = {
+            "prompt": messages,
+            "n_predict": -1,
+            "temperature": 0,
+            "top_k": 40,
+            "top_p": 0.95,
+            "repeat_penalty": 1.1,
+            "stop": ["<|user|>", "<|system|>", "</s>","</<|assistant|>","<|assistant|>"],
+        }
+        request_url = LOCAL_URL
+        headers = {}
+    response = requests.post(request_url, json=data, headers=headers)
+    x = clipboard_text
+    content = ""
     if response.status_code == 200:
-        # llama.cpp returns a list of chunks; join them if needed
-        content = response.json()["content"]
-        if isinstance(content, list):
-            x=("".join([c["text"] for c in content]))
-        else:
-            x=content
-    messages += f"<|assistant|>{content}\n<|user|>\nSuggest a good filename for this script (just the filename, no extra text). The name and extension should be based on the format you were asked to convert the text to, \n STRICTLY EXTENSION BASED ON INSTRUCTION(else file will be not accessible), ALSO NAME BASED ON INSTRUCTION.\n<|assistant|>\n"
-
-    data2 = {
-        "prompt": messages,
-        "n_predict": 50,
-        "temperature": 0,
-        "stop": ["<|user|>", "<|system|>", "</s>","</<|assistant|>","<|assistant|>"],
-    }
-    response2 = requests.post(url, json=data2)
-    filename="advanced_paste_output.txt"
+        rj = response.json()
+        if "content" in rj:
+            content = rj["content"]
+            if isinstance(content, list):
+                x = "".join([c.get("text","") for c in content])
+            else:
+                x = content
+        elif "choices" in rj and rj["choices"]:
+            # OpenAI style
+            choice = rj["choices"][0]
+            content = choice.get("text") or choice.get("message", {}).get("content", "")
+            x = content
+    if effective_use_openai:
+        messages += [{"role": "assistant", "content": x}]
+        messages += [{"role": "user", "content": "Suggest a good filename for this script (just the filename, no extra text). The name and extension should be based on the format you were asked to convert the text to, \n STRICTLY EXTENSION BASED ON INSTRUCTION(else file will be not accessible), ALSO NAME BASED ON INSTRUCTION."}]
+        data2 = {
+            "model": OPENAI_MODEL,
+            "messages": messages,
+            "temperature": 0,
+            "max_tokens": 50,
+            "stop": ["<|user|>", "<|system|>", "</s>","<|assistant|>"]
+        }
+        request_url2 = OPENAI_ENDPOINT
+        headers2 = {"Authorization": f"Bearer {OPENAI_API_KEY}" if OPENAI_API_KEY else "",
+        "Content-Type": "application/json",}
+    else:
+        messages += f"<|assistant|>{x}\n<|user|>\nSuggest a good filename for this script (just the filename, no extra text). The name and extension should be based on the format you were asked to convert the text to, \n STRICTLY EXTENSION BASED ON INSTRUCTION(else file will be not accessible), ALSO NAME BASED ON INSTRUCTION.\n<|assistant|>\n"
+        data2 = {
+            "prompt": messages,
+            "n_predict": 50,
+            "temperature": 0,
+            "stop": ["<|user|>", "<|system|>", "</s>","</<|assistant|>","<|assistant|>"],
+        }
+        request_url2 = LOCAL_URL
+        headers2 = {}
+    response2 = requests.post(request_url2, json=data2, headers=headers2)
+    filename = "advanced_paste_output.txt"
     if response2.status_code == 200:
-        content = response2.json()["content"]
-        if isinstance(content, list):
-            filename = "".join([c["text"] for c in content])
-        else:
-            filename = content
+        rj2 = response2.json()
+        if "content" in rj2:
+            c2 = rj2["content"]
+            if isinstance(c2, list):
+                filename = "".join([c.get("text","") for c in c2])
+            else:
+                filename = c2
+        elif "choices" in rj2 and rj2["choices"]:
+            filename = (rj2["choices"][0].get("text") or rj2["choices"][0].get("message", {}).get("content", ""))
     return x, filename
 
 """Minimal pywebview launcher for the command palette UI.
