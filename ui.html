@@ -58,6 +58,7 @@ const listEl = document.getElementById('results');
 const inputEl = document.getElementById('search');
 let activeIndex = 0;
 let filtered = [];
+let busy = false;
 
 async function load(){
   if(window.pywebview){
@@ -95,6 +96,7 @@ function render(){
     const li=document.createElement('li');
     li.dataset.index=i;
     if(i===activeIndex) li.classList.add('active');
+    if(busy) li.classList.add('disabled');
     const icon=document.createElement('div');
     icon.className='item-icon';
     icon.style.background=it.color || '#111827';
@@ -110,19 +112,61 @@ function render(){
 }
 
 function trigger(name){
+  if(busy) return;
+  setBusy(true);
   if(window.pywebview) {
-    window.pywebview.api.action(name).then(r=>console.log(r));
+    window.pywebview.api.action(name).then(r=>handleResult(r)).catch(e=>handleError(e));
   } else {
     console.log('Trigger', name);
+    fakeDelay();
   }
 }
 
 function submitText(text){
+  if(busy) return;
+  setBusy(true);
   if(window.pywebview){
-    window.pywebview.api.submit_text(text).then(r=>console.log(r));
+    window.pywebview.api.submit_text(text).then(r=>handleResult(r)).catch(e=>handleError(e));
   } else {
     console.log('Submit text', text);
+    fakeDelay();
   }
+}
+
+function handleResult(r){
+  if(r && r.status === 'ok'){
+    // Successful save -> request shutdown
+    if(window.pywebview && window.pywebview.api.shutdown){
+      window.pywebview.api.shutdown();
+    } else {
+      window.close();
+    }
+  } else {
+    handleError(r && r.error ? r.error : 'Unknown error');
+  }
+}
+
+function handleError(e){
+  console.error('Operation failed', e);
+  setBusy(false);
+}
+
+function setBusy(state){
+  busy = state;
+  inputEl.disabled = state;
+  if(state){
+    inputEl.placeholder = 'Working...';
+  } else {
+    inputEl.placeholder = 'Describe what format you want..';
+  }
+  document.body.classList.toggle('busy', state);
+  render();
+}
+
+function fakeDelay(){
+  setTimeout(()=>{
+    handleError('Demo mode: no backend.');
+  },1200);
 }
 
 function move(delta){

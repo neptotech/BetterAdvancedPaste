@@ -44,7 +44,7 @@ Instruction:
             x=("".join([c["text"] for c in content]))
         else:
             x=content
-    messages += f"<|assistant|>{content}\n<|user|>\nSuggest a good filename for this script (just the filename, no extra text). The name and extension should be based on the format you were asked to convert the text to, STRICTLY NAME BASED ON INSTRUCTION.\n<|assistant|>\n"
+    messages += f"<|assistant|>{content}\n<|user|>\nSuggest a good filename for this script (just the filename, no extra text). The name and extension should be based on the format you were asked to convert the text to, \n STRICTLY EXTENSION BASED ON INSTRUCTION(else file will be not accessible), ALSO NAME BASED ON INSTRUCTION.\n<|assistant|>\n"
 
     data2 = {
         "prompt": messages,
@@ -72,6 +72,7 @@ class API:
         self.config_path = config_path
         self.output_dir = output_dir
         self._cache: List[Dict[str, Any]] | None = None
+        self._window = None  # will be set after window creation
 
     # Internal loader
     def _load(self) -> List[Dict[str, Any]]:
@@ -134,6 +135,17 @@ class API:
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
+    # Allow JS to request app shutdown after successful save
+    def shutdown(self):
+        try:
+            import webview
+            if self._window:
+                webview.destroy_window(self._window)
+        finally:
+            # Ensure process exits even if window destroy fails
+            import os
+            os._exit(0)
+
     def _sanitize_filename(self, name: str) -> str:
         name = (name or '').strip().replace('\r','').replace('\n','')
         for ch in '<>:"/\\|?*':
@@ -156,7 +168,7 @@ def create_window(output_dir: Path):
     preferred_backends = ['edgechromium', 'cef', 'mshtml']
     for backend in preferred_backends:
         try:
-            webview.create_window(
+            w = webview.create_window(
                 title='Command Palette',
                 url=html_path.as_uri(),
                 width=420,
@@ -166,12 +178,13 @@ def create_window(output_dir: Path):
                 frameless=False,  # Set to True for frameless palette style
                 js_api=api
             )
+            api._window = w
             webview.start(gui=backend, debug=False, http_server=True)
             return
         except Exception as e:
             print(f"Backend '{backend}' failed: {e}")
     # Fallback to auto
-    webview.create_window(
+    w = webview.create_window(
         title='Command Palette',
         url=html_path.as_uri(),
         width=420,
@@ -181,6 +194,7 @@ def create_window(output_dir: Path):
         frameless=False,
         js_api=api
     )
+    api._window = w
     webview.start(debug=False, http_server=True)
 
 
