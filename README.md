@@ -114,3 +114,36 @@ If `use_openai` is true but no key is provided (file and env both empty) the app
 - Errors from the AI call are surfaced back to the JS console (see DevTools) via returned status.
 - Clipboard is read only once at startup; re-run app if you want to process a changed clipboard (or extend to recapture on each instruction).
 - Minimal error UI—extend JS to show toast/snackbar for better UX.
+
+## Build a small, fast Windows EXE
+
+Two good options:
+
+- PyInstaller: simplest, reliable, smallest with UPX.
+- Nuitka: fastest runtime, sometimes larger binary. Great for performance.
+
+Quick build using the included script (PowerShell):
+
+```powershell
+# PyInstaller (onefile, UPX if available)
+./build.ps1 -Clean
+
+# Nuitka (onefile, faster runtime)
+./build.ps1 -Nuitka
+```
+
+This produces `BetterAdvancedPaste.exe` at the repo root. It bundles `ui.html` and `settings.html` automatically. Config resolution order:
+
+1) Env var `BAP_CONFIG` pointing to a file path
+2) `conf.json` next to the EXE (portable mode)
+3) User profile: `%APPDATA%\BetterAdvancedPaste\conf.json` (Windows)
+
+Tips for smallest size:
+- Install UPX and keep it in PATH; PyInstaller uses it automatically here.
+- Avoid unused GUI backends; spec excludes Qt/PySide/GTK.
+- Keep requirements lean; `pywebview`, `requests`, `pyperclip`, `keyring` are required.
+
+Custom icon:
+```powershell
+./build.ps1 -Icon .\app.ico
+```

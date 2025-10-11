@@ -1,2 +1,10 @@
-__pycache__/main.cpython-312.pyc
 conf.json
+__pycache__/
+.venv/
+dist/
+build/
+*.spec
+*.pyc
+*.exe
+icon.ico
+icon.auto.ico

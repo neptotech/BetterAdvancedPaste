@@ -70,6 +70,7 @@
       <span style="color:var(--muted);font-weight:500;">Save history</span>
   <input id="saveHistoryToggle" type="checkbox" style="width:34px;height:18px;appearance:none;border:1px solid #c8d0d7;border-radius:20px;position:relative;cursor:pointer;outline:none;transition:background .25s;">
     </label>
+    <button id="settingsBtn" title="Settings" style="margin-left:auto;border:1px solid var(--border);background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer;">Settings</button>
   </div>
 </div>
 <script>
@@ -254,6 +255,15 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('click', e=>{
   if(e.target && e.target.id === 'saveHistoryToggle'){
     toggleSaveHistory();
+  }
+  if(e.target && e.target.id === 'settingsBtn'){
+    if(window.__openingSettings) return;
+    window.__openingSettings = true;
+    if(window.pywebview && window.pywebview.api && window.pywebview.api.open_settings){
+      window.pywebview.api.open_settings().catch(()=>{}).finally(()=>{ window.__openingSettings = false; });
+    } else {
+      window.__openingSettings = false;
+    }
   }
 });
 

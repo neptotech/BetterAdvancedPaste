@@ -6,15 +6,63 @@ import requests
 import pyperclip
 import sys
 import argparse
+import getpass
+import keyring
 import os
-
 # Defaults (will be overridden by conf.json ai section if present)
 AI_DEFAULTS = {
     "use_openai": False,
     "local_url": "http://127.0.0.1:8080/completion"
 }
 
-CONFIG_PATH = Path(__file__).parent / 'conf.json'
+def _resource_path(name: str) -> Path:
+    """Return absolute path to a bundled resource (handles PyInstaller/Nuitka)."""
+    base = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
+    return base / name
+
+
+def _app_config_dir() -> Path:
+    """Return per-user writable config directory."""
+    if sys.platform.startswith('win'):
+        base = os.environ.get('APPDATA') or str(Path.home() / 'AppData' / 'Roaming')
+        return Path(base) / 'BetterAdvancedPaste'
+    elif sys.platform == 'darwin':
+        return Path.home() / 'Library' / 'Application Support' / 'BetterAdvancedPaste'
+    else:
+        return Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'BetterAdvancedPaste'
+
+
+def _exe_dir() -> Path:
+    """Directory of the running executable (or script during dev)."""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller/Nuitka onefile
+        try:
+            return Path(sys.executable).resolve().parent
+        except Exception:
+            pass
+    return Path(__file__).resolve().parent
+
+
+def _resolve_config_path() -> Path:
+    """Choose config location with this precedence:
+    1) BAP_CONFIG env var (file path)
+    2) conf.json next to the EXE (portable mode) if present
+    3) %APPDATA%/BetterAdvancedPaste/conf.json (or OS equivalent)
+    """
+    env_path = os.environ.get('BAP_CONFIG')
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    portable = _exe_dir() / 'conf.json'
+    if portable.exists():
+        return portable
+    return _app_config_dir() / 'conf.json'
+
+
+CONFIG_PATH = _resolve_config_path()
+
+# Keyring identifiers
+SERVICE_NAME = "BetterAdvancedPaste"
+USERNAME = getpass.getuser()
 
 def load_ai_settings() -> Dict[str, Any]:
     data: Dict[str, Any] = {}
@@ -27,26 +75,6 @@ def load_ai_settings() -> Dict[str, Any]:
     if not isinstance(ai, dict):
         ai = {}
     merged = {**AI_DEFAULTS, **{k: v for k, v in ai.items() if v is not None}}
-    # Environment variable overrides
-    # (common names: ADV_PASTE_API_KEY, OPENAI_API_KEY, ADV_PASTE_MODEL, ADV_PASTE_ENDPOINT)
-    api_key_env = os.getenv('ADV_PASTE_API_KEY') or os.getenv('OPENAI_API_KEY')
-    if api_key_env:
-        merged['api_key'] = api_key_env
-    model_env = os.getenv('ADV_PASTE_MODEL')
-    if model_env:
-        merged['model'] = model_env
-    endpoint_env = os.getenv('ADV_PASTE_ENDPOINT')
-    if endpoint_env:
-        merged['endpoint'] = endpoint_env
-    local_url_env = os.getenv('ADV_PASTE_LOCAL_URL')
-    if local_url_env:
-        merged['local_url'] = local_url_env
-    use_openai_env = os.getenv('ADV_PASTE_USE_OPENAI')
-    if use_openai_env is not None:
-        if use_openai_env.lower() in ('0','false','no','off'):
-            merged['use_openai'] = False
-        elif use_openai_env.lower() in ('1','true','yes','on'):
-            merged['use_openai'] = True
     return merged
 
 AI_SETTINGS = load_ai_settings()
@@ -56,10 +84,29 @@ OPENAI_MODEL: str = AI_SETTINGS.get('model')
 OPENAI_ENDPOINT: str = AI_SETTINGS.get('endpoint')
 LOCAL_URL: str = AI_SETTINGS.get('local_url')
 
-if USE_OPENAI and not OPENAI_API_KEY:
-    print("Warning: use_openai is True but no API key supplied. Set ADV_PASTE_API_KEY env var or conf.json ai.api_key.")
 
 clipboard_text = pyperclip.paste()
+
+
+def _get_keyring_token() -> str | None:
+    try:
+        return keyring.get_password(SERVICE_NAME, USERNAME)
+    except Exception:
+        return None
+
+
+def _set_keyring_token(value: str | None) -> None:
+    try:
+        if value:
+            keyring.set_password(SERVICE_NAME, USERNAME, value)
+        else:
+            # empty/None deletes
+            try:
+                keyring.delete_password(SERVICE_NAME, USERNAME)
+            except Exception:
+                pass
+    except Exception as e:
+        raise e
 
 def askAI(instruction):
     p1="You are a helpful AI that edits text according to user instructions."
@@ -75,36 +122,38 @@ Instruction:
 {instruction}
 """
     
+    # Resolve API key: prefer keyring token if set, else config/env
+    openai_key_effective = _get_keyring_token() or OPENAI_API_KEY
     # If OpenAI selected but no key, silently fallback to local if available
-    effective_use_openai = USE_OPENAI and bool(OPENAI_API_KEY)
-    if USE_OPENAI and not OPENAI_API_KEY:
+    effective_use_openai = USE_OPENAI and bool(openai_key_effective)
+    if USE_OPENAI and not openai_key_effective:
         print("No API key present; falling back to local model endpoint.")
         effective_use_openai = False
 
     if effective_use_openai:
-        messages = [
-        {"role": "system", "content": p1},
-        {"role": "user", "content": p2},
-    ]
+        messages_chat = [
+            {"role": "system", "content": p1},
+            {"role": "user", "content": p2},
+        ]
         data = {
             "model": OPENAI_MODEL,
-            "messages": messages ,
+            "messages": messages_chat,
             "temperature": 0,
             "max_tokens": 2048,
             "stop": ["<|user|>", "<|system|>", "</s>","<|assistant|>"]
         }
         request_url = OPENAI_ENDPOINT
-        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}" if OPENAI_API_KEY else "",
-        "Content-Type": "application/json",}
+        headers = {"Authorization": f"Bearer {openai_key_effective}" if openai_key_effective else "",
+                   "Content-Type": "application/json",}
     else:
-        messages = f"""<|system|>
+        prompt = f"""<|system|>
 {p1}
 <|user|>
 {p2}
 <|assistant|>
 """
         data = {
-            "prompt": messages,
+            "prompt": prompt,
             "n_predict": -1,
             "temperature": 0,
             "top_k": 40,
@@ -114,57 +163,76 @@ Instruction:
         }
         request_url = LOCAL_URL
         headers = {}
-    response = requests.post(request_url, json=data, headers=headers)
-    x = clipboard_text
-    content = ""
-    if response.status_code == 200:
+
+    # Primary completion request: must succeed or we fail the action
+    try:
+        response = requests.post(request_url, json=data, headers=headers)
+        response.raise_for_status()
+    except Exception as e:
+        # Make OpenAI auth/malformed key errors bubble up to stop shutdown
+        raise RuntimeError(f"AI request failed: {e}")
+
+    x = ""
+    try:
         rj = response.json()
-        if "content" in rj:
-            content = rj["content"]
-            if isinstance(content, list):
-                x = "".join([c.get("text","") for c in content])
-            else:
-                x = content
-        elif "choices" in rj and rj["choices"]:
-            # OpenAI style
-            choice = rj["choices"][0]
-            content = choice.get("text") or choice.get("message", {}).get("content", "")
-            x = content
-    if effective_use_openai:
-        messages += [{"role": "assistant", "content": x}]
-        messages += [{"role": "user", "content": "Suggest a good filename for this script (just the filename, no extra text). The name and extension should be based on the format you were asked to convert the text to, \n STRICTLY EXTENSION BASED ON INSTRUCTION(else file will be not accessible), ALSO NAME BASED ON INSTRUCTION."}]
-        data2 = {
-            "model": OPENAI_MODEL,
-            "messages": messages,
-            "temperature": 0,
-            "max_tokens": 50,
-            "stop": ["<|user|>", "<|system|>", "</s>","<|assistant|>"]
-        }
-        request_url2 = OPENAI_ENDPOINT
-        headers2 = {"Authorization": f"Bearer {OPENAI_API_KEY}" if OPENAI_API_KEY else "",
-        "Content-Type": "application/json",}
+    except Exception:
+        raise RuntimeError("AI response was not JSON")
+
+    if "content" in rj:
+        content = rj["content"]
+        if isinstance(content, list):
+            x = "".join([c.get("text","") for c in content])
+        else:
+            x = str(content)
+    elif "choices" in rj and rj["choices"]:
+        # OpenAI style
+        choice = rj["choices"][0]
+        x = choice.get("text") or choice.get("message", {}).get("content", "")
     else:
-        messages += f"<|assistant|>{x}\n<|user|>\nSuggest a good filename for this script (just the filename, no extra text). The name and extension should be based on the format you were asked to convert the text to, \n STRICTLY EXTENSION BASED ON INSTRUCTION(else file will be not accessible), ALSO NAME BASED ON INSTRUCTION.\n<|assistant|>\n"
-        data2 = {
-            "prompt": messages,
-            "n_predict": 50,
-            "temperature": 0,
-            "stop": ["<|user|>", "<|system|>", "</s>","</<|assistant|>","<|assistant|>"],
-        }
-        request_url2 = LOCAL_URL
-        headers2 = {}
-    response2 = requests.post(request_url2, json=data2, headers=headers2)
+        raise RuntimeError("AI response missing expected fields")
+
+    if not (x or "").strip():
+        raise RuntimeError("AI returned empty result")
+    # Secondary filename suggestion: best-effort; failures fall back to default
     filename = "advanced_paste_output.txt"
-    if response2.status_code == 200:
-        rj2 = response2.json()
-        if "content" in rj2:
-            c2 = rj2["content"]
-            if isinstance(c2, list):
-                filename = "".join([c.get("text","") for c in c2])
-            else:
-                filename = c2
-        elif "choices" in rj2 and rj2["choices"]:
-            filename = (rj2["choices"][0].get("text") or rj2["choices"][0].get("message", {}).get("content", ""))
+    try:
+        if effective_use_openai:
+            messages_chat += [{"role": "assistant", "content": x}]
+            messages_chat += [{"role": "user", "content": "Suggest a good filename for this script (just the filename, no extra text). The name and extension should be based on the format you were asked to convert the text to, \n STRICTLY EXTENSION BASED ON INSTRUCTION(else file will be not accessible), ALSO NAME BASED ON INSTRUCTION."}]
+            data2 = {
+                "model": OPENAI_MODEL,
+                "messages": messages_chat,
+                "temperature": 0,
+                "max_tokens": 50,
+                "stop": ["<|user|>", "<|system|>", "</s>","<|assistant|>"]
+            }
+            request_url2 = OPENAI_ENDPOINT
+            headers2 = {"Authorization": f"Bearer {openai_key_effective}" if openai_key_effective else "",
+                        "Content-Type": "application/json",}
+        else:
+            prompt2 = f"<|assistant|>{x}\n<|user|>\nSuggest a good filename for this script (just the filename, no extra text). The name and extension should be based on the format you were asked to convert the text to, \n STRICTLY EXTENSION BASED ON INSTRUCTION(else file will be not accessible), ALSO NAME BASED ON INSTRUCTION.\n<|assistant|>\n"
+            data2 = {
+                "prompt": prompt2,
+                "n_predict": 50,
+                "temperature": 0,
+                "stop": ["<|user|>", "<|system|>", "</s>","</<|assistant|>","<|assistant|>"],
+            }
+            request_url2 = LOCAL_URL
+            headers2 = {}
+        response2 = requests.post(request_url2, json=data2, headers=headers2)
+        if response2.status_code == 200:
+            rj2 = response2.json()
+            if "content" in rj2:
+                c2 = rj2["content"]
+                if isinstance(c2, list):
+                    filename = "".join([c.get("text","") for c in c2])
+                else:
+                    filename = str(c2)
+            elif "choices" in rj2 and rj2["choices"]:
+                filename = (rj2["choices"][0].get("text") or rj2["choices"][0].get("message", {}).get("content", ""))
+    except Exception:
+        # keep default filename on any error
+        pass
     return x, filename
 
 """Minimal pywebview launcher for the command palette UI.
@@ -179,6 +247,9 @@ class API:
         self._cache: List[Dict[str, Any]] | None = None
         self._settings: Dict[str, Any] | None = None
         self._window = None  # will be set after window creation
+        self._settings_window = None  # secondary popup window
+        self._settings_creating = False  # debounce flag
+        self._settings_closing = False   # prevent duplicate closes
 
     # Internal loader
     def _load(self) -> List[Dict[str, Any]]:
@@ -261,6 +332,115 @@ class API:
             print(f"Failed to persist settings: {e}")
         return self._settings
 
+    # --- Keyring-backed API token methods ---
+    def get_api_token(self) -> str:
+        """Return current API token from keyring (or empty string if none)."""
+        tok = _get_keyring_token()
+        return tok or ""
+
+    def set_api_token(self, token: str) -> bool:
+        """Set/replace API token in keyring. Empty string clears it."""
+        try:
+            _set_keyring_token(token.strip() or None)
+            return True
+        except Exception as e:
+            print(f"Failed to set API token: {e}")
+            return False
+
+    def open_settings(self):
+        """Show the settings popup window, creating it on demand if necessary."""
+        try:
+            if self._settings_creating:
+                print("[settings] open ignored (already creating)")
+                return True
+            if self._settings_window is None:
+                settings_html = _resource_path('settings.html')
+                if not settings_html.exists():
+                    print("[settings] settings.html missing")
+                    return False
+                # Resolve window icon if available
+                _icon = _resource_path('icon.ico')
+                _icon_arg = str(_icon) if _icon.exists() else None
+                self._settings_creating = True
+                try:
+                    print("[settings] creating window")
+                    try:
+                        w = webview.create_window(
+                            title='Settings',
+                            url=settings_html.as_uri(),
+                            width=500,
+                            height=250,
+                            resizable=False,
+                            on_top=True,
+                            js_api=self,
+                            icon=_icon_arg
+                        )
+                    except TypeError:
+                        w = webview.create_window(
+                            title='Settings',
+                            url=settings_html.as_uri(),
+                            width=500,
+                            height=250,
+                            resizable=False,
+                            on_top=True,
+                            js_api=self
+                        )
+                    # Attach close event if available
+                    try:
+                        if hasattr(w, 'events') and hasattr(w.events, 'closed'):
+                            w.events.closed += lambda: self._on_settings_closed()
+                    except Exception:
+                        pass
+                    self._settings_window = w
+                    return True
+                finally:
+                    self._settings_creating = False
+            else:
+                try:
+                    print("[settings] showing existing window")
+                    self._settings_window.show()
+                    self._settings_window.bring_to_front()
+                    return True
+                except Exception:
+                    print("[settings] existing reference invalid, recreating")
+                    self._settings_window = None
+                    return self.open_settings()
+        except Exception as e:
+            print(f"Failed to open settings window: {e}")
+            return False
+
+    def _on_settings_closed(self):
+        print("[settings] window closed event")
+        self._settings_window = None
+
+    def close_settings(self) -> bool:
+        """Destroy the settings window to avoid backend inconsistencies across GUIs."""
+        try:
+            if self._settings_closing:
+                print("[settings] close ignored (already closing)")
+                return True
+            self._settings_closing = True
+            if self._settings_window:
+                try:
+                    print("[settings] destroy window")
+                    if hasattr(self._settings_window, 'destroy'):
+                        self._settings_window.destroy()
+                    else:
+                        print("[settings] no destroy(); hiding instead")
+                        self._settings_window.hide()
+                except Exception as e:
+                    print(f"[settings] destroy/hide failed: {e}")
+                finally:
+                    self._settings_window = None
+                    self._settings_closing = False
+                return True
+            # no window present
+            self._settings_closing = False
+            return False
+        except Exception as e:
+            print(f"Failed to close settings window: {e}")
+            return False
+
     def action(self, name: str):
         print(f"Action triggered: {name}")
         try:
@@ -292,12 +472,35 @@ class API:
     # Allow JS to request app shutdown after successful save
     def shutdown(self):
         try:
-            import webview
+            # Destroy settings window first if present
+            try:
+                if self._settings_window:
+                    print("[shutdown] destroying settings window")
+                    try:
+                        if hasattr(self._settings_window, 'destroy'):
+                            self._settings_window.destroy()
+                        else:
+                            self._settings_window.hide()
+                    except Exception as e:
+                        print(f"[shutdown] settings destroy/hide failed: {e}")
+                    self._settings_window = None
+            except Exception:
+                pass
+            # Then destroy main window
             if self._window:
-                webview.destroy_window(self._window)
+                print("[shutdown] destroying main window")
+                try:
+                    if hasattr(self._window, 'destroy'):
+                        self._window.destroy()
+                    else:
+                        self._window.hide()
+                except Exception as e:
+                    print(f"[shutdown] main destroy/hide failed: {e}")
+                self._window = None
         finally:
             # Ensure process exits even if window destroy fails
             import os
+            print("[shutdown] exiting process")
             os._exit(0)
 
     def _sanitize_filename(self, name: str) -> str:
@@ -348,44 +551,85 @@ class API:
 
 
 def create_window(output_dir: Path):
-    html_path = Path(__file__).parent / 'ui.html'
+    html_path = _resource_path('ui.html')
     if not html_path.exists():
         raise FileNotFoundError('ui.html not found')
 
-    config_path = Path(__file__).parent / 'conf.json'
+    # Ensure config directory exists for read/write
+    try:
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    config_path = CONFIG_PATH
     api = API(config_path, output_dir)
     _ = api  # reference to avoid linter warning
     preferred_backends = ['edgechromium', 'cef', 'mshtml']
+    # Resolve window icon if present
+    icon_path = _resource_path('icon.ico')
+    icon_arg = str(icon_path) if icon_path.exists() else None
     for backend in preferred_backends:
         try:
-            w = webview.create_window(
-                title='Command Palette',
-                url=html_path.as_uri(),
-                width=420,
-                height=460,
-                resizable=False,
-                easy_drag=True,
-                frameless=False,  # Set to True for frameless palette style
-                js_api=api
-            )
+            try:
+                w = webview.create_window(
+                    title='Command Palette',
+                    url=html_path.as_uri(),
+                    width=420,
+                    height=460,
+                    resizable=False,
+                    easy_drag=True,
+                    frameless=False,  # Set to True for frameless palette style
+                    js_api=api,
+                    icon=icon_arg
+                )
+            except TypeError:
+                # Older pywebview without 'icon' kw support
+                w = webview.create_window(
+                    title='Command Palette',
+                    url=html_path.as_uri(),
+                    width=420,
+                    height=460,
+                    resizable=False,
+                    easy_drag=True,
+                    frameless=False,
+                    js_api=api
+                )
             api._window = w
-            webview.start(gui=backend, debug=False, http_server=True)
+            def _on_start():
+                # Nothing to do at start; windows already created
+                pass
+            webview.start(_on_start, gui=backend, debug=False, http_server=True)
             return
         except Exception as e:
             print(f"Backend '{backend}' failed: {e}")
     # Fallback to auto
-    w = webview.create_window(
-        title='Command Palette',
-        url=html_path.as_uri(),
-        width=420,
-        height=460,
-        resizable=False,
-        easy_drag=True,
-        frameless=False,
-        js_api=api
-    )
+    try:
+        w = webview.create_window(
+            title='Command Palette',
+            url=html_path.as_uri(),
+            width=420,
+            height=460,
+            resizable=False,
+            easy_drag=True,
+            frameless=False,
+            js_api=api,
+            icon=icon_arg
+        )
+    except TypeError:
+        w = webview.create_window(
+            title='Command Palette',
+            url=html_path.as_uri(),
+            width=420,
+            height=460,
+            resizable=False,
+            easy_drag=True,
+            frameless=False,
+            js_api=api
+        )
     api._window = w
-    webview.start(debug=False, http_server=True)
+    def _on_start2():
+        # Nothing to do at start
+        pass
+    webview.start(_on_start2, debug=False, http_server=True)
 
 
 def parse_args(argv):
