@@ -27,6 +27,9 @@ Stores and retrieves settings securely via keyring separated from conf.json file
 ![](images/tray.png)  
 Open config file to edit presets, add text icons, edit localhost url or edit service provider endpoint url
 
+# Download
+[Download from release](https://github.com/neptotech/BetterAdvancedPaste/releases/)
+
 ## How it works
 
 There are two parts:
