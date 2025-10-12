@@ -3,7 +3,7 @@ __pycache__/
 .venv/
 dist/
 build/
-*.spec
+
 *.pyc
 *.exe
 icon.ico
