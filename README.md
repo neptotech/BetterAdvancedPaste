@@ -2,6 +2,9 @@
 
 An AI-powered “Advanced Paste” for Windows. Press Win+Shift+V in File Explorer to open a lightweight command palette that takes your current clipboard, applies your instruction (or a preset), and saves the AI-generated output to the active Explorer folder with a sensible filename. Inspired by [Powertoys](https://github.com/microsoft/PowerToys) advanced paste module
 
+This was my hobby project since powertoys advanced paste only allowed openai endpoints, while I wished to use free endpoints online or llama cpp server
+
+The python main project was made cross platform to be used like `python main.py folderpath` and it will show the gui and paste clipboard text like that. Its only the windows explorer hooking part of project that is preventing it from hitting linux and mac. However I am not thinking of expanding it to them or spend more time on this. Anyone who can do it are welcome.
 
 ## ✨ Features
 - Global hotkey: Win+Shift+V to open the palette in the active Explorer window
@@ -74,6 +77,14 @@ Alternatively edit `local_url` to use llamacpp,lmstudio,ollama,etc. servers
 	]
 }
 ```
+## Recommended local models
+If you are gonna use llama-server I recommend the following models:
+ - LiquidAI\LFM2-1.2B-GGUF\LFM2-1.2B-Q8_0.gguf
+ - lmstudio-community\Qwen3-4B-Instruct-2507-GGUF\Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+ - ggml-org\SmolVLM2-2.2B-Instruct-GGUF\SmolVLM2-2.2B-Instruct-Q4_K_M.gguf  
+ Prefer such small and powerful instruct models.  
+ Start it like `llama-server -m "!MODEL_PATH!" --gpu-layers 999` and use the endpoint it starts in conf.json   
+ Any amd or intel `igpu` would be powerful enough. Just make sure you have vulkan or such equivalent drivers to support llama use integrated gpu
 
 ## Build – Python app (PyInstaller)
 
