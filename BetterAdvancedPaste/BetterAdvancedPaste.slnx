@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="BetterAdvancedPaste/BetterAdvancedPaste.vcxproj" Id="5371d5c1-6be9-41ba-809e-485d44f9a21f" />
+</Solution>

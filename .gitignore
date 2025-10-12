@@ -8,3 +8,8 @@ build/
 *.exe
 icon.ico
 icon.auto.ico
+BetterAdvancedPaste/.vs
+BetterAdvancedPaste/Release
+BetterAdvancedPaste/x64
+BetterAdvancedPaste/BetterAdvancedPaste/Release
+BetterAdvancedPaste/BetterAdvancedPaste/x64
