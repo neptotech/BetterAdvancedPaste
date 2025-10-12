@@ -1,149 +1,158 @@
-# AI Clipboard Transformer Palette
+# BetterAdvancedPaste
 
-A minimal **pywebview** command palette that captures your clipboard, lets you type an instruction (or pick a preset), sends both to a local AI endpoint (llama.cpp style), then saves the transformed text to a file with an AI‑suggested filename in a target folder you provide on startup.
+An AI-powered “Advanced Paste” for Windows. Press Win+Shift+V in File Explorer to open a lightweight command palette that takes your current clipboard, applies your instruction (or a preset), and saves the AI-generated output to the active Explorer folder with a sensible filename. Inspired by [Powertoys](https://github.com/microsoft/PowerToys) advanced paste module
 
-## Features
-- Clipboard captured at launch (plain text) using `pyperclip`
-- Type an instruction OR pick a predefined option (its title becomes the instruction)
-- Sends clipboard + instruction to local AI endpoint (`http://127.0.0.1:8080/completion`)
-- Second AI call suggests a good filename (sanitized + `.txt` added if missing)
-- Saves result into the output directory you pass as the first CLI argument
-- PyWebView desktop window (Edge / Chromium backend preferred)
-- Keyboard navigation (↑ ↓ Enter)
-- Options loaded from `conf.json`
-- API methods: `get_options`, `action`, `submit_text` (both run the AI pipeline)
 
-## Keyboard & Interaction
-| Key / Action | Behavior |
-|--------------|----------|
-| ↑ / ↓        | Move selection among filtered options |
-| Typing       | Filters options by title/description |
-| Enter (text present) | Submits the typed text to Python (`submit_text`) |
-| Enter (empty box) | Triggers the currently highlighted option (`action`) |
+## ✨ Features
+- Global hotkey: Win+Shift+V to open the palette in the active Explorer window
+- The small 73kb c/c++ exe is the one that checks for shortcut usage from tray, the main 13mb python program palette is called only when shortcut is used.
+- Command palette UI (pywebview) with fast filtering and presets from `conf.json`
+- “Type what you want” freeform instruction in the search bar
+- Saves output file into the current Explorer folder and auto-closes on success
+- Smart filename suggestion via AI with safe sanitization and correct extension
+- Preset history: optionally store successful prompts into `conf.json` for reuse
+- Settings popup to manage your OpenAI API token securely via OS keyring
+- AI backends:
+	- OpenAI-compatible API (if `use_openai` and token set)
+	- Local model endpoint fallback at `http://127.0.0.1:8080/completion`
+- Tray icon with right-click menu (Open config, About, Exit)
+- Auto-start on login (adds HKCU\...\Run entry)
+- The python software is fully cross platform. Only the c/c++ helper that detects explorer location is windows only.
+# Screenshots
+![](images/palette.png)
 
-## Project Layout
-```
-main.py          # Starts the pywebview window & exposes API
-ui.html          # HTML/CSS/JS for the palette UI logic
-conf.json        # Configuration-driven option list
-requirements.txt # Python dependency pin
-README.md        # This file
-```
+![](images/settings.png)  
+Stores and retrieves settings securely via keyring separated from conf.json file into system credentials.
 
-## Install & Run
-Create a virtual environment (recommended) then install dependencies.
+![](images/tray.png)  
+Open config file to edit presets, add text icons, edit localhost url or edit service provider endpoint url
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python main.py D:\\Files\\   # <- choose your output directory
-```
-If Edge backend fails the app will attempt other backends then fallback to auto.
+## How it works
 
-The first argument is required: it is where generated files will be saved. It will be created if it does not exist.
+There are two parts:
 
-### Local AI Endpoint
-This project expects a llama.cpp compatible HTTP server at `http://127.0.0.1:8080/completion` returning JSON chunks like:
+1) Python UI (pywebview) built into a standalone executable via PyInstaller.
+	 - Binary name from this repo’s PyInstaller build is `BetterAdvancedPaste.exe`.
+	 - It expects a single CLI argument: an output directory where the generated file will be saved.
+	 - Its fully cross platform
+	 - Example usage: `python main.py D:\`
+
+2) Native Windows helper (C++/Win32).
+	 - Stays resident in the tray, installs a low-level keyboard hook for Win+Shift+V.
+	 - On hotkey, it resolves the active Explorer folder and launches `BetterAdvancedPasteCLI.exe "<that-folder>"`.
+	 - For deployment, you should place the Python-built EXE next to the C++ EXE and name it `BetterAdvancedPasteCLI.exe` (see Deployment below).
+
+
+## Configuration
+>**NOTE:**
+Everyone must edit the conf.json, change following entries: `endpoint`,`use_openai`, `model`, and inside win shift v menu edit setting pasting the key to be used with endpoint.   
+Alternatively edit `local_url` to use llamacpp,lmstudio,ollama,etc. servers  
+
+`conf.json` controls presets, settings, and AI options. Example (included):
+
 ```json
 {
-	"content": [ {"text": "..."}, {"text": "..."} ]
-}
-```
-Adjust `AI_URL` in `main.py` if your endpoint differs.
-
-## Configuration: `conf.json`
-Options are defined externally so you can add new commands without editing code. A new `ai` section controls whether an OpenAI‑compatible endpoint is used or a local llama.cpp style server.
-
-Example (abridged):
-```json
-{
+	"settings": { "save_history": false },
 	"ai": {
 		"use_openai": true,
-		"api_key": "YOUR_API_KEY_HERE",
 		"model": "gpt-3.5-turbo",
 		"endpoint": "https://api.chatanywhere.tech/v1/chat/completions",
 		"local_url": "http://127.0.0.1:8080/completion"
 	},
 	"options": [
-		{ "icon": "AA", "color": "#2563eb", "title": "Paste as plain text", "desc": "Strip formatting and paste" },
-		{ "icon": "{}", "color": "#7e22ce", "title": "Paste as markdown", "desc": "Format content as Markdown" }
+		{ "icon": "{}", "color": "#2563eb", "title": "Paste as plain text", "desc": "Strip formatting and paste" },
+		{ "icon": "{}", "color": "#7e22ce", "title": "Paste as markdown",  "desc": "Format content as Markdown" },
+		{ "icon": "{}", "color": "#7e22ce", "title": "Paste as multiline JSON", "desc": "Convert content to JSON" },
+		{ "icon": "{}", "color": "#7e22ce", "title": "Paste as Powershell script", "desc": "Convert content to Powershell script" },
+		{ "icon": "{}", "color": "#7e22ce", "title": "Paste as Python script", "desc": "Convert content to Python script" },
+		{ "icon": "{}", "color": "#7e22ce", "title": "Paste as Bash script",   "desc": "Convert content to Bash script" },
+		{ "icon": "{}", "color": "#7e22ce", "title": "Paste as HTML",          "desc": "Convert content to HTML" },
+		{ "icon": "{}", "color": "#7e22ce", "title": "Paste as XML",           "desc": "Convert content to XML" }
 	]
 }
 ```
-Fields:
-- `icon` (string) short label shown in colored square
-- `color` (hex) background for the icon square
-- `title` (string, required) command name
-- `desc` (string) secondary description / hint
 
-On load, the frontend calls `get_options()`; invalid or missing fields are skipped. If `conf.json` is absent, an empty list (fallback sample in dev) is used.
+## Build – Python app (PyInstaller)
 
-### AI Section Fields
-| Field | Type | Description |
-|-------|------|-------------|
-| `use_openai` | bool | If true, uses an OpenAI chat completion style request. If false (or missing / no key), falls back to local URL. |
-| `api_key` | string | API key for remote endpoint. If blank and `use_openai=true`, a warning is printed and local fallback is attempted. |
-| `model` | string | Model name passed to the OpenAI‑compatible API. |
-| `endpoint` | string | Chat completion endpoint (POST). |
-| `local_url` | string | Local llama.cpp style endpoint used when not using OpenAI or when key missing. |
+Prereqs: Python 3.11+ (3.12 is OK), PowerShell, and optionally UPX in PATH for compression.
 
-### Environment Variable Overrides
-You can override values without editing the file:
+This repo includes a build script that creates a venv, installs deps, converts an icon if needed, and runs PyInstaller using `better_advanced_paste.spec`.
 
-| Env Var | Overrides |
-|---------|----------|
-| `ADV_PASTE_API_KEY` / `OPENAI_API_KEY` | ai.api_key |
-| `ADV_PASTE_MODEL` | ai.model |
-| `ADV_PASTE_ENDPOINT` | ai.endpoint |
-| `ADV_PASTE_LOCAL_URL` | ai.local_url |
-| `ADV_PASTE_USE_OPENAI` | ai.use_openai (values: 1/0, true/false, yes/no) |
-
-If `use_openai` is true but no key is provided (file and env both empty) the app prints a warning and automatically uses the local endpoint instead.
-
-## Extending Behavior
-- Change model params (temperature, n_predict) inside `call_local_ai` or when invoking it.
-- Use a different save format (e.g., add extension inference) in `_process_instruction` of the `API` class.
-- Add metadata sidecar (e.g., JSON with prompt + timestamp) after writing the main file.
-- Make window frameless: set `frameless=True` in `create_window()` and add custom controls.
-- Add streaming: adapt `call_local_ai` to handle server-sent events or partial chunks.
-
-## Notes
-- Filename is sanitized (invalid Windows characters replaced with `_`). `.txt` enforced if missing.
-- If AI filename generation fails, a timestamped fallback is used (e.g., `output_YYYYmmdd_HHMMSS.txt`).
-- Errors from the AI call are surfaced back to the JS console (see DevTools) via returned status.
-- Clipboard is read only once at startup; re-run app if you want to process a changed clipboard (or extend to recapture on each instruction).
-- Minimal error UI—extend JS to show toast/snackbar for better UX.
-
-## Build a small, fast Windows EXE
-
-Two good options:
-
-- PyInstaller: simplest, reliable, smallest with UPX.
-- Nuitka: fastest runtime, sometimes larger binary. Great for performance.
-
-Quick build using the included script (PowerShell):
+- With a PNG icon:
 
 ```powershell
-# PyInstaller (onefile, UPX if available)
-./build.ps1 -Clean
-
-# Nuitka (onefile, faster runtime)
-./build.ps1 -Nuitka
+pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File build.ps1 -Icon icon.png
 ```
 
-This produces `BetterAdvancedPaste.exe` at the repo root. It bundles `ui.html` and `settings.html` automatically. Config resolution order:
+- Or without icon (it will try `icon.ico` if present):
 
-1) Env var `BAP_CONFIG` pointing to a file path
-2) `conf.json` next to the EXE (portable mode)
-3) User profile: `%APPDATA%\BetterAdvancedPaste\conf.json` (Windows)
-
-Tips for smallest size:
-- Install UPX and keep it in PATH; PyInstaller uses it automatically here.
-- Avoid unused GUI backends; spec excludes Qt/PySide/GTK.
-- Keep requirements lean; `pywebview`, `requests`, `pyperclip`, `keyring` are required.
-
-Custom icon:
 ```powershell
-./build.ps1 -Icon .\app.ico
+pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File build.ps1
 ```
+
+Outputs:
+
+- `dist/BetterAdvancedPaste.exe` (also copied to the repo root for convenience)
+
+Notes:
+
+- The Python executable expects one argument: output directory where the AI result should be saved.
+- For integration with the C++ helper, rename/copy the built EXE to `BetterAdvancedPasteCLI.exe` and place it next to the C++ tray app EXE (see Deployment).
+
+
+## Build – C/C++ native helper (Win32)
+
+Prereqs: Visual Studio 2022 with C++ Desktop workload and a recent Windows SDK.
+
+Steps:
+
+1. Open the solution filter: `BetterAdvancedPaste/BetterAdvancedPaste.slnx` in Visual Studio.
+2. Select the `Release | x64` configuration.
+3. Build. The tray app executable will be generated under `BetterAdvancedPaste/x64/Release/`.
+
+What it does:
+
+- Installs a low-level keyboard hook for Win+Shift+V
+- Resolves the active File Explorer folder
+- Launches `BetterAdvancedPasteCLI.exe "<folder>"` (expected in the same directory as the tray app)
+- Adds a tray icon and a startup registry key under HKCU Run
+
+
+## Deployment
+
+Place these files side-by-side (same folder):
+
+- `BetterAdvancedPaste.exe` (C++ tray app)
+- `BetterAdvancedPasteCLI.exe` (Python UI – produced by the Python build, renamed)
+- `conf.json` (your configuration)
+
+Start the tray app(BetterAdvancedPaste.exe). Use Win+Shift+V in an Explorer window to open the palette.
+
+
+## Usage tips
+- Custom prompts are better if they mention the file extension they expect the output along with normal prompt stuff like   
+>_replace all " with ' and save as .txt_
+- Type an instruction in the palette (e.g., “format as Markdown”, “make a PowerShell script that…”) or select a preset.
+- On success the app closes automatically and saves a file into the current folder.
+- Toggle “Save history” to automatically append successful prompts to `conf.json` for reuse.
+- Use the Settings button in the palette to set your OpenAI API token (stored in keyring).
+
+
+## Troubleshooting
+
+- No response or “AI request failed”: ensure your OpenAI token is configured (Settings) or your local endpoint at `127.0.0.1:8080/completion` is running.
+- The palette doesn’t appear: verify the C++ tray app is running (tray icon visible) and you’re pressing Win+Shift+V in a File Explorer window.
+- File not saved: ensure the Explorer window has a real filesystem folder in focus.
+
+
+## Development
+(Cross platform)
+- Run UI without packaging (for quick dev):
+	- `python main.py "C:\\Temp\\Output"`
+- Edit presets in `conf.json`; they appear in the palette when the app starts.
+
+
+## License
+
+This project is licensed under the terms of the LICENSE file included in the repository.
+
