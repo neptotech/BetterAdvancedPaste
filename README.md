@@ -6,6 +6,9 @@ This was my hobby project since powertoys advanced paste only allowed openai end
 
 The python main project was made cross platform to be used like `python main.py folderpath` and it will show the gui and paste clipboard text like that. Its only the windows explorer hooking part of project that is preventing it from hitting linux and mac. However I am not thinking of expanding it to them or spend more time on this. Anyone who can do it are welcome.
 
+> This project pastes text to a file automatically created with suitable file name. And the content of file is also pasted with your requirement.  
+  So you copy a code, use this by win shift v shortcut , use custom saved prompt paste as python file add any imports if necessary, and boom you immediately have a .py file with suitable name like snakegame.py and the content of file also has imports.
+- The limits of its use are thus boundless. While Powertoys advanced paste focus on pasting to text box. We are fully focused here on pasting to file explorer a text based file.
 ## ✨ Features
 - Global hotkey: Win+Shift+V to open the palette in the active Explorer window
 - The small 73kb c/c++ exe is the one that checks for shortcut usage from tray, the main 13mb python program palette is called only when shortcut is used.
